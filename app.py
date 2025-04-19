@@ -48,7 +48,7 @@ logo = Image.open("logo_rtaf.png")
 st.image(logo, width=100)
 
 # หัวข้อหลัก
-st.title("📘 ระบบตรวจสอบเอกสารวิจัย")
+st.title("\U0001F4D8 ระบบตรวจสอบเอกสารวิจัย")
 st.subheader("ศูนย์วิจัยพัฒนาวิทยาศาสตร์เทคโนโลยีการบินเเละอวกาศกองทัพอากาศ")
 
 # ฟังก์ชันลบช่องว่างซ้ำ
@@ -75,7 +75,7 @@ def generate_pdf_report(grammar_results, format_results, readability_results, st
     write_line("ผลการตรวจสอบเอกสารวิจัย", font_size=16)
     write_line("-----------------------------------------")
 
-    write_line("🔤 ตรวจไวยากรณ์และการสะกด")
+    write_line("\U0001F524 ตรวจไวยากรณ์และการสะกด")
     if grammar_results:
         for item in grammar_results[:10]:
             write_line(f"- ข้อความ: {item['error_text']}", indent=20)
@@ -85,17 +85,17 @@ def generate_pdf_report(grammar_results, format_results, readability_results, st
         write_line("✅ ไม่พบข้อผิดพลาด")
 
     write_line("")
-    write_line("📐 ตรวจรูปแบบเอกสาร")
+    write_line("\U0001F4D0 ตรวจรูปแบบเอกสาร")
     for section, result in format_results.items():
         write_line(f"- {section}: {result}", indent=20)
 
     write_line("")
-    write_line("📊 ตรวจคุณภาพการอ่าน")
+    write_line("\U0001F4CA ตรวจคุณภาพการอ่าน")
     for k, v in readability_results.items():
         write_line(f"- {k}: {v}", indent=20)
 
     write_line("")
-    write_line("🧠 สรุปองค์ประกอบเอกสาร")
+    write_line("\U0001F9E0 สรุปองค์ประกอบเอกสาร")
     for title, content in structure_results.items():
         write_line(f"{title}:", indent=20)
         write_line(content[:300] + "...", indent=40)
@@ -109,6 +109,9 @@ def generate_pdf_report(grammar_results, format_results, readability_results, st
 uploaded_file = st.file_uploader("อัปโหลดไฟล์ PDF หรือ DOCX", type=["pdf", "docx"])
 
 if uploaded_file:
+    lang_option = st.radio("เลือกภาษาของเอกสาร", ["ไทย", "อังกฤษ"], horizontal=True)
+    lang_code = 'th' if lang_option == "ไทย" else 'en'
+
     if uploaded_file.name.endswith(".pdf"):
         text = extract_text_from_pdf(uploaded_file)
     else:
@@ -118,51 +121,60 @@ if uploaded_file:
 
     cleaned_text = remove_extra_spaces(text)
 
-    with st.expander("🔤 ตรวจไวยากรณ์และการสะกด"):
-        count, matches = check_grammar(cleaned_text)
+    with st.expander("\U0001F524 ตรวจไวยากรณ์และการสะกด"):
+        count, matches = check_grammar(cleaned_text, lang=lang_code)
         st.write(f"พบ {count} ข้อผิดพลาด")
-        for m in matches[:5]:
-            st.markdown(f"- ❗ {m.message} (ตำแหน่ง: {m.offset})")
+
+        if lang_code == 'th':
+            for m in matches[:5]:
+                st.markdown(f"- ❗ {m['message']}: **{m['error_text']}** → แนะนำ: {', '.join(m['suggestions'])}")
+        else:
+            for m in matches[:5]:
+                st.markdown(f"- ❗ {m.message} (ตำแหน่ง: {m.offset})")
 
     # แปลง matches เป็น list ที่ใช้ใน PDF
     grammar_data = []
-    for m in matches:
-        grammar_data.append({
-            'error_text': cleaned_text[m.offset:m.offset + m.errorLength],
-            'suggestions': m.replacements,
-            'message': m.message
-        })
+    if lang_code == 'th':
+        grammar_data = matches
+    else:
+        for m in matches:
+            grammar_data.append({
+                'error_text': cleaned_text[m.offset:m.offset + m.errorLength],
+                'suggestions': m.replacements,
+                'message': m.message
+            })
 
-    with st.expander("📐 ตรวจรูปแบบเอกสาร"):
+    with st.expander("\U0001F4D0 ตรวจรูปแบบเอกสาร"):
         format_result = check_format(cleaned_text)
         for section, result in format_result.items():
             st.write(f"- {section}: {result}")
 
-    with st.expander("📊 ตรวจคุณภาพการอ่าน"):
+    with st.expander("\U0001F4CA ตรวจคุณภาพการอ่าน"):
         readability = check_readability(cleaned_text)
         for k, v in readability.items():
             st.write(f"{k}: {v}")
 
-    with st.expander("🧠 สรุปองค์ประกอบเอกสาร"):
+    with st.expander("\U0001F9E0 สรุปองค์ประกอบเอกสาร"):
         summary = summarize_structure(cleaned_text)
         for title, content in summary.items():
             st.subheader(title)
             st.write(content[:500] + "..." if len(content) > 500 else content)
 
     # ปุ่มดาวน์โหลด PDF
-    if st.button("📄 ดาวน์โหลดผลการตรวจเป็น PDF"):
+    if st.button("\U0001F4C4 ดาวน์โหลดผลการตรวจเป็น PDF"):
         pdf_buffer = generate_pdf_report(grammar_data, format_result, readability, summary)
         b64 = base64.b64encode(pdf_buffer.read()).decode()
-        href = f'<a href="data:application/pdf;base64,{b64}" download="report.pdf">📥 คลิกเพื่อดาวน์โหลดรายงาน</a>'
+        href = f'<a href="data:application/pdf;base64,{b64}" download="report.pdf">\U0001F4E5 คลิกเพื่อดาวน์โหลดรายงาน</a>'
         st.markdown(href, unsafe_allow_html=True)
-    # 🧾 ข้อมูลการติดต่อผู้พัฒนา
-# -------------------------------
+
+# 🧾 ข้อมูลการติดต่อผู้พัฒนา
 st.markdown("""
 <hr style="border:1px solid #003366; margin-top:40px; margin-bottom:10px">
 <div style="text-align: center; color: #003366; font-size: 14px;">
-    📞 ติดต่อสอบถามปัญหาการใช้งานระบบ<br>
+    \U0001F4DE ติดต่อสอบถามปัญหาการใช้งานระบบ<br>
     ผู้พัฒนา: สำนักงานวิจัย ศูนย์วิจัยพัฒนาวิทยาศาสตร์เทคโนโลยีการบินและอวกาศ กองทัพอากาศ<br>
     อีเมล: <a href="mailto:piyapan_th@rtaf.mi.th">piyapan_th@rtaf.mi.th</a><br>
     โทรศัพท์: 02-534-4849 
 </div>
 """, unsafe_allow_html=True)
+
