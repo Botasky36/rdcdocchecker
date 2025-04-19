@@ -5,3 +5,4 @@ language-tool-python
 textstat
 spacy
 reportlab
+pythainlp
