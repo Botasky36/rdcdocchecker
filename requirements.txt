@@ -2,3 +2,5 @@ streamlit
 python-docx
 PyPDF2
 language-tool-python
+textstat
+spacy
