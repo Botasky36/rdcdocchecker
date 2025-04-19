@@ -18,14 +18,3 @@ def check_thai_spelling(text):
                     'message': "อาจสะกดผิด"
                 })
     return len(mistakes), mistakes
-
-
-def check_grammar(text, lang='en'):
-    if lang == 'th':
-        return check_thai_spelling(text)
-    else:
-        tool = language_tool_python.LanguageToolPublicAPI('en-US')
-        if len(text) > 10000:
-            text = text[:10000]
-        matches = tool.check(text)
-        return len(matches), matches
