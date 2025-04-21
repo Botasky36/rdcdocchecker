@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.reader import extract_text_from_pdf, extract_text_from_docx
+from utils.grammar import check_grammar
 from utils.format_checker import check_format
 from utils.readability import check_readability
 from utils.structure_summary import summarize_structure
@@ -10,7 +11,7 @@ from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 import base64
-from pythainlp.spell import correct
+from fpdf import FPDF
 
 # กำหนดสไตล์หน้า
 st.set_page_config(page_title="Research Document Checker", layout="wide")
@@ -55,69 +56,33 @@ st.subheader("ศูนย์วิจัยพัฒนาวิทยาศา
 def remove_extra_spaces(text):
     return re.sub(r'\s{2,}', ' ', text)
 
-# ตรวจคำผิดแบบไทย
-def check_thai_spelling(text):
-    words = text.split()
-    results = []
-    for word in words:
-        corrected = correct(word)
-        if word != corrected:
-            results.append({
-                'error_text': word,
-                'suggestions': [corrected],
-                'message': "คำนี้อาจสะกดไม่ถูกต้อง"
-            })
-    return results
+# ฟังก์ชัน export PDF ผ่าน FPDF + Streamlit
+def export_report_streamlit(text_dict):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_font("Arial", size=12)
 
-# ฟังก์ชันสร้าง PDF รายงาน
-def generate_pdf_report(grammar_results, format_results, readability_results, structure_results):
+    pdf.cell(200, 10, txt="ผลการตรวจสอบเอกสารวิจัย", ln=True, align='C')
+
+    for section, content in text_dict.items():
+        pdf.ln(8)
+        pdf.set_font("Arial", style="B", size=12)
+        pdf.cell(200, 10, txt=section, ln=True)
+        pdf.set_font("Arial", size=11)
+
+        text = str(content)
+        lines = text.split('\n')
+        for line in lines:
+            pdf.multi_cell(0, 10, txt=line)
+
     buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    x = 50
-    y = height - 50
-
-    def write_line(text, indent=0, font_size=11):
-        nonlocal y
-        c.setFont("Helvetica", font_size)
-        c.drawString(x + indent, y, text)
-        y -= 18
-        if y < 50:
-            c.showPage()
-            y = height - 50
-
-    write_line("ผลการตรวจสอบเอกสารวิจัย", font_size=16)
-    write_line("-----------------------------------------")
-
-    write_line("🔤 ตรวจการสะกดคำภาษาไทย")
-    if grammar_results:
-        for item in grammar_results[:10]:
-            write_line(f"- ข้อความ: {item['error_text']}", indent=20)
-            write_line(f"  ข้อเสนอแนะ: {', '.join(item['suggestions'])}", indent=40)
-            write_line(f"  คำอธิบาย: {item['message']}", indent=40)
-    else:
-        write_line("✅ ไม่พบข้อผิดพลาด")
-
-    write_line("")
-    write_line("📐 ตรวจรูปแบบเอกสาร")
-    for section, result in format_results.items():
-        write_line(f"- {section}: {result}", indent=20)
-
-    write_line("")
-    write_line("📊 ตรวจคุณภาพการอ่าน")
-    for k, v in readability_results.items():
-        write_line(f"- {k}: {v}", indent=20)
-
-    write_line("")
-    write_line("🧠 สรุปองค์ประกอบเอกสาร")
-    for title, content in structure_results.items():
-        write_line(f"{title}:", indent=20)
-        write_line(content[:300] + "...", indent=40)
-
-    c.showPage()
-    c.save()
+    pdf.output(buffer)
     buffer.seek(0)
-    return buffer
+
+    b64 = base64.b64encode(buffer.read()).decode()
+    href = f'<a href="data:application/pdf;base64,{b64}" download="report.pdf">📥 ดาวน์โหลด PDF รายงาน</a>'
+    st.markdown(href, unsafe_allow_html=True)
 
 # อัปโหลดไฟล์
 uploaded_file = st.file_uploader("อัปโหลดไฟล์ PDF หรือ DOCX", type=["pdf", "docx"])
@@ -132,11 +97,13 @@ if uploaded_file:
 
     cleaned_text = remove_extra_spaces(text)
 
-    with st.expander("🔤 ตรวจการสะกดคำภาษาไทย"):
-        grammar_results = check_thai_spelling(cleaned_text)
-        st.write(f"พบ {len(grammar_results)} ข้อผิดพลาด")
-        for item in grammar_results[:5]:
-            st.markdown(f"- ❗ {item['error_text']} → {item['suggestions'][0]} ({item['message']})")
+    with st.expander("🔤 ตรวจไวยากรณ์และการสะกด"):
+        msg, matches = check_grammar(cleaned_text)
+        st.write(msg)
+        for m in matches[:5]:
+            st.markdown(f"- ❗ {m['error_text']} → {', '.join(m['suggestions'])} ({m['message']})")
+
+    grammar_data = matches
 
     with st.expander("📐 ตรวจรูปแบบเอกสาร"):
         format_result = check_format(cleaned_text)
@@ -154,23 +121,26 @@ if uploaded_file:
             st.subheader(title)
             st.write(content[:500] + "..." if len(content) > 500 else content)
 
-    # ปุ่มดาวน์โหลด PDF
-    if st.button("📄 ดาวน์โหลดผลการตรวจเป็น PDF"):
-        pdf_buffer = generate_pdf_report(grammar_results, format_result, readability, summary)
-        b64 = base64.b64encode(pdf_buffer.read()).decode()
-        href = f'<a href="data:application/pdf;base64,{b64}" download="report.pdf">📥 คลิกเพื่อดาวน์โหลดรายงาน</a>'
-        st.markdown(href, unsafe_allow_html=True)
+    # สร้างรายงานสรุปแบบ dict
+    summary_data = {
+        "🔤 ตรวจคำผิด": msg + "\n" + "\n".join([
+            f"- {item['error_text']} → {', '.join(item['suggestions'])}" for item in grammar_data[:10]
+        ]),
+        "📐 รูปแบบเอกสาร": "\n".join([f"{k}: {v}" for k, v in format_result.items()]),
+        "📊 ความสามารถในการอ่าน": "\n".join([f"{k}: {v}" for k, v in readability.items()]),
+        "🧠 สรุปองค์ประกอบ": "\n".join([f"{k}: {v[:150]}..." for k, v in summary.items()])
+    }
+
+    export_report_streamlit(summary_data)
 
 # 🧾 ข้อมูลการติดต่อผู้พัฒนา
-# -------------------------------
 st.markdown("""
 <hr style="border:1px solid #003366; margin-top:40px; margin-bottom:10px">
 <div style="text-align: center; color: #003366; font-size: 14px;">
     📞 ติดต่อสอบถามปัญหาการใช้งานระบบ<br>
     ผู้พัฒนา: สำนักงานวิจัย ศูนย์วิจัยพัฒนาวิทยาศาสตร์เทคโนโลยีการบินและอวกาศ กองทัพอากาศ<br>
-    อีเมล: <a href="mailto:piyapan_th@rtaf.mi.th">piyapan_th@rtaf.mi.th</a><br>
-    โทรศัพท์: 02-534-4849 
+    อีเมล: <a href=\"mailto:piyapan_th@rtaf.mi.th\">piyapan_th@rtaf.mi.th</a><br>
+    โทรศัพท์: 02-534-4849 ต่อ 12345
 </div>
 """, unsafe_allow_html=True)
-
 
