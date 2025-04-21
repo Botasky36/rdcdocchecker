@@ -51,3 +51,8 @@ def generate_pdf_report(grammar_results, format_results, readability_results, st
     c.save()
     buffer.seek(0)
     return buffer
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer
